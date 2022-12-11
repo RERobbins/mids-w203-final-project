@@ -1,0 +1,291 @@
+---
+title: "cm_playground"
+author: "Christian Montecillo"
+date: "3/30/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r read in rds}
+d <- readRDS("../datasets/awesome_data.rds")
+# 
+attendance_df <- d$attendance
+student_teacher_ratios_df <- d$student_teacher_ratios
+teacher_demographics_df <- d$teacher_demographics
+teacher_salaries_df <- d$teacher_salaries
+free_and_reduced_lunch_df <- d$free_and_reduced_lunch
+consolidated_df <- d$consolidated.district
+```
+
+```{r sanity check of the data}
+# this has been addressed --> consolidated_df
+
+# check to see if schools in attendance_df and s_t_ratio are represented in each
+# without gaps in either
+
+# n_distinct(attendance_df$district_name) # 184 school districts represented in attendance_df
+# n_distinct(student_teacher_ratios_df$district_name) # 185 school districts represented in student_teacher_ratios_df
+
+# find values in attendance_df that are not in student_teacher_ratios_df
+# unique(attendance_df$district_name[!attendance_df$district_name %in% student_teacher_ratios_df$district_name])
+
+
+# The following school districts exist in the `attendance_df` but not in the `student_teacher_ratios_df`:  
+# "WELD RE-8 SCHOOLS"  
+# "UPPER RIO GRANDE SCHOOL DISTRICT C-7"  
+```
+
+```{r}
+# this has been addressed
+
+# find values in student_teacher_ratios_df that are not in attendance_df
+# unique(student_teacher_ratios_df$dis#trict_name[!student_teacher_ratios_df$district_name %in% attendance_df$district_name])
+
+# The following school districts exist in `student_teacher_ratios_df` but not in the `attendance_df`:  
+# "CHERAW 31"  
+# "DEL NORTE C-7"  
+# "WELD COUNTY S/D RE-8"  
+# 
+# 
+# I suspect (just a hunch) that:  
+# "WELD RE-8 SCHOOLS" == "WELD COUNTY S/D RE-8"  
+# "UPPER RIO GRANDE SCHOOL DISTRICT C-7"  == "DEL NORTE C-7"  
+
+```
+
+```{r}
+# this has been addressed
+
+# Check to see if hunch is correct: "WELD RE-8 SCHOOLS" == "WELD COUNTY S/D RE-8"  
+# attendance_df[which(attendance_df$district_name == "WELD RE-8 SCHOOLS"), ]
+```
+
+```{r}
+# this has been cleaned
+
+# student_teacher_ratios_df[which(student_teacher_ratios_df$district_name == "WELD COUNTY S/D RE-8"), ]
+
+# Notice that `attendance_df$enrollment` and `student_teacher_ratios_df$pk_12_count` are identical for the six schools listed in each `df`. We can conclude that, indeed:  
+# "WELD RE-8 SCHOOLS" == "WELD COUNTY S/D RE-8"  
+```
+  
+```{r}
+# this has been addressed
+
+# attendance_df[which(attendance_df$district_name == "UPPER RIO GRANDE SCHOOL DISTRICT C-7"), ]
+
+# Now let's do the same for "UPPER RIO GRANDE SCHOOL DISTRICT C-7"  == "DEL NORTE C-7"  
+```
+
+```{r}
+# this has been addressed
+
+# student_teacher_ratios_df[which(student_teacher_ratios_df$district_name == "DEL NORTE C-7"), ]
+
+# Notice that `attendance_df$enrollment` and `student_teacher_ratios_df$pk_12_count` are identical for the two schools listed in each `df`. We can conclude that, indeed:  
+# "UPPER RIO GRANDE SCHOOL DISTRICT C-7"  == "DEL NORTE C-7"  
+```
+
+```{r}
+# this has been addressed
+
+# student_teacher_ratios_df %>% filter(district_name == "CHERAW 31")
+
+# There is another school district in `student_teacher_ratios_df$district_name` that isn't in `attendance_df$district_name`: "CHERAW 31"  
+  
+# Let's take a look at other information about the `CHERAW 31` school district:  
+```
+
+
+```{r}
+# this has been addressed
+
+# attendance_df %>% filter(school_name == "CHERAW SCHOOL")
+
+# Sanity check to see if `CHERAW SCHOOL` exists in the `attendance_df`:  
+```
+
+```{r EDA on teacher_salaries_df}
+df_grp_lunch <- free_and_reduced_lunch_df %>% group_by(district_name, school_name)  %>%
+  summarise(free_plus_reduced = free_lunch + reduced_lunch, students_count = pk_12_count)
+
+
+lunch_hist <- df_grp_lunch %>% 
+  ggplot() + 
+  aes(x=free_plus_reduced) +
+  geom_histogram(bins=50) +
+  ggtitle("Free/Reduced Lunch by School") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Sum(Free/Reduced Lunch)") +
+  ylab("Count")
+
+lunch_hist
+
+
+district_grp_lunch <- df_grp_lunch %>%
+  group_by(district_name) %>%
+  summarise(sum_free_plus_reduced = sum(free_plus_reduced), subsidized_lunch_rate = sum(free_plus_reduced) / sum(students_count))
+
+district_lunch_hist <- district_grp_lunch %>% 
+  ggplot() + 
+  aes(x=sum_free_plus_reduced) +
+  geom_histogram(bins=50) +
+  ggtitle("Free/Reduced Lunch by District") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Sum(Free/Reduced Lunch)") +
+  ylab("Count")
+
+district_lunch_hist
+
+
+sub_lunch_rate_hist <- district_grp_lunch %>% 
+  ggplot() + 
+  aes(x=subsidized_lunch_rate) +
+  geom_histogram(bins=50) +
+  ggtitle("Subsidized Lunch Rate by District") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Subsidized Lunches / District Population") +
+  ylab("Count") +
+  geom_density() +
+  scale_y_continuous(breaks = seq(0, 13, 1), lim = c(0, 13))
+
+sub_lunch_rate_hist
+```
+
+```{r}
+cor(cbind(d$consolidated.district$percent_free_and_reduced, d$consolidated.district$average_salary, d$consolidated.district$free_and_reduced_count, d$consolidated.district$teacher_fte))
+```
+
+```{r}
+lm(average_salary ~ percent_free_and_reduced, data = consolidated_df)
+```
+
+```{r}
+cor(consolidated_df$average_salary, consolidated_df$percent_free_and_reduced)
+
+```
+
+```{r}
+truancy_plot <- consolidated_df %>%
+  ggplot() + 
+  aes(x = log(truancy_rate)) + 
+  geom_histogram(bins = 100) + 
+  xlab("truancy rate")
+
+truancy_plot
+
+summary(consolidated_df$truancy_rate)
+
+qqPlot(log(consolidated_df$truancy_rate))
+qqPlot(consolidated_df$truancy_rate)
+```
+```{r}
+str_plot <- consolidated_df %>%
+  ggplot() + 
+  aes(x = pupil_teacher_fte_ratio) + 
+  geom_histogram(bins = 100) + 
+  xlab("s-t ratio")
+
+str_plot
+
+summary(log(consolidated_df$pupil_teacher_fte_ratio))
+
+qqPlot(log(consolidated_df$pupil_teacher_fte_ratio))
+qqPlot(consolidated_df$pupil_teacher_fte_ratio)
+```
+
+```{r}
+enroll_plot <- consolidated_df %>%
+  ggplot() + 
+  aes(x = log(consolidated_df$enrollment)) + 
+  geom_histogram(bins = 100) + 
+  xlab("log(enrollment)")
+
+enroll_plot
+
+# summary(consolidated_df$truancy_rate)log(enrollment)
+
+qqPlot(log(consolidated_df$enrollment))
+qqPlot(consolidated_df$enrollment)
+```
+
+
+
+```{r}
+model1 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio), data = consolidated_df)
+model2 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility, data = consolidated_df)
+model3 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + log(enrollment), data = consolidated_df)
+model4 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + log(enrollment) + free_and_reduced_count, data = consolidated_df)
+# model5 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + log(enrollment) + enrollment:teacher_fte, data = consolidated_df)
+```
+
+```{r}
+cor(consolidated_df$enrollment, consolidated_df$pupil_teacher_fte_ratio)
+```
+
+
+```{r}
+print("****model1:****")
+summary(model1)
+
+print("****model1_1:****")
+summary(model1_1)
+
+print("****model2:****")
+summary(model2)
+
+print("****model3:****")
+summary(model3)
+
+print("****model4:****")
+summary(model4)
+
+# print("****model5:****")
+# summary(model5)
+```
+
+```{r}
+coeftest(model1)
+```
+
+
+```{r}
+coeftest(model2)
+```
+
+```{r}
+# coeftest(model3)
+coeftest(model3, vcov=vcovHC(model3))
+```
+
+```{r}
+coeftest(model4)
+```
+
+
+```{r}
+waldtest(model1, model2, vcov=vcovHC(model2, type="HC0"))
+```
+
+```{r}
+waldtest(model2, model3, vcov=vcovHC(model3, type="HC0"))
+```
+
+
+```{r}
+waldtest(model3, model4, vcov=vcovHC(model4, type="HC0"))
+```
+
+
+
+

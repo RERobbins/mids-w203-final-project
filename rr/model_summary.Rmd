@@ -1,0 +1,37 @@
+---
+title: "Model Summary"
+author: "Jean-Luc Jackson, Christian Montecillo and Richard Robbins"
+date: "4/9/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The dependent variable for each model is $log(truancy\_rate)$
+
+The $subsidy\_level$ variable is a factor with three levels, $high$, $average$, and $low$.
+
+**Model 1**
+$$
+\beta_0 + \beta_1 pupil\_teacher\_ratio
+$$
+**Model 2**
+$$
+\beta_0 + \beta_1 pupil\_teacher\_ratio\ + \beta_{2,3}subsidy\_level
+$$
+**Model 3**
+$$
+\beta_0 + \beta_{1,2}subsidy\_level + \beta_{3,4,5}subsidy\_level \cdot pupil\_teacher\_ratio
+$$
+**Model 4**
+$$
+\beta_0 + \beta_{1,2}subsidy\_level + \beta_{3,4,5}subsidy\_level \cdot pupil\_teacher\_ratio + \beta_6 \cdot \frac{average\_salary}{1000}
+$$
+
+
+
+

@@ -1,0 +1,138 @@
+---
+title: "survivoR"
+author: "Jean-Luc Jackson"
+date: "3/22/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Bring in Survivor data
+install.packages("survivoR")
+```
+
+```{r}
+library(survivoR)
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+```
+
+```{r}
+c_details <- castaway_details
+castaway_details
+```
+
+```{r}
+viewers
+names(viewers)
+
+```
+
+
+```{r}
+# Motivation: viewership has been declining over the years
+viewers %>% 
+  ggplot() +
+  aes(x = episode_number_overall, y = viewers) +
+  geom_point()
+
+viewers %>% 
+  ggplot() +
+  aes(x = episode_number_overall, y = rating_18_49) +
+  geom_point()
+
+viewers %>% 
+  ggplot() +
+  aes(x = episode_number_overall, y = imdb_rating) +
+  geom_point()
+
+viewers %>% 
+  ggplot() +
+  aes(x = episode_number_overall, y = share_18_49) +
+  geom_point()
+
+viewers %>% 
+  ggplot() +
+  aes(x = imdb_rating) +
+  geom_histogram(bins=30)+
+  geom_vline(xintercept = mean(viewers$imdb_rating, na.rm = TRUE))
+
+viewers %>% 
+  ggplot() +
+  aes(x = imdb_rating) +
+  geom_density() +
+  geom_vline(xintercept = mean(viewers$imdb_rating, na.rm = TRUE))
+```
+
+
+```{r}
+# Personality Types on the Show
+castaway_details
+names(castaway_details)
+
+castaway_details %>% 
+  ggplot() +
+  aes(x = personality_type) +
+  geom_bar()
+```
+
+
+```{r}
+# Types of Challenges
+challenge_description
+challenge_results %>% 
+  arrange(desc(challenge_id))
+
+challenge_results %>% 
+  filter(challenge_id == "CH1017") %>% 
+  unnest(winners)
+
+challenge_results %>% 
+  ggplot() +
+  aes(x = challenge_type) +
+  geom_bar()
+
+```
+
+```{r}
+
+challenge_description %>% 
+  filter(puzzle == TRUE) %>% 
+  count()
+
+challenge_description %>% 
+  summarize_at(vars(puzzle:water), function(x) n())
+
+
+
+# Encoding types of challenges
+chall <- challenge_description %>% 
+  mutate(
+    type = case_when(
+      puzzle = TRUE ~ "puzzle",
+      race = TRUE ~ "race",
+      precision = TRUE ~ "precision",
+      endurace = TRUE ~ "endurance",
+      strength = TRUE ~ "strength",
+      turn_based = TRUE ~ "turn_based",
+      balance = TRUE ~ "balance",
+      food = TRUE ~ "food",
+      knowledge = TRUE ~ "knowledge",
+      memory = TRUE ~ "memory",
+      fire = TRUE ~ "fire",
+      water = TRUE ~ "water"
+    )
+  )
+
+chall %>% 
+  ggplot() +
+  aes(x = type) +
+  geom_bar()
+
+```
+

@@ -1,0 +1,90 @@
+---
+title: "RER Lab 2 Working Notebook"
+author: "Richard Robbins"
+date: \today
+header-includes:
+   - \usepackage{dcolumn}
+output: 
+  pdf_document: 
+    number_sections: false
+    toc: false
+    toc_depth: 1
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(include=FALSE)
+knitr::knit_hooks$set(inline=function(x) {prettyNum(x, big.mark=",")})
+
+if (!require("here")) install.packages("here")
+
+library(here)
+library(patchwork)
+library(sandwich)
+library(lmtest)
+library(tidyverse)
+library(stargazer)
+```
+
+```{r load data}
+awesome_data <- read_rds(here ("submission/awesome_data.rds"))
+```
+
+# District Level Data  log / no-transform
+
+```{r}
+df <- awesome_data$consolidated.district
+df$lunch_subsidy_eligibility <- factor(df$lunch_subsidy_eligibility, levels=c('LOW', 'AVG', 'HIGH'))
+
+model_1 <- lm (log(truancy_rate) ~ pupil_teacher_fte_ratio, data=df)
+model_1.se <- coeftest(model_1, vcov=vcovHC)[ , "Std. Error"]
+
+model_2 <- lm (log(truancy_rate) ~ pupil_teacher_fte_ratio + lunch_subsidy_eligibility, data=df)
+model_2.se <- coeftest(model_2, vcov=vcovHC)[ , "Std. Error"]
+
+model_3 <- lm (log(truancy_rate) ~ pupil_teacher_fte_ratio:lunch_subsidy_eligibility + lunch_subsidy_eligibility , data=df)
+model_3.se <- coeftest(model_3, vcov=vcovHC)[ , "Std. Error"]
+
+model_4 <- lm (log(truancy_rate) ~ pupil_teacher_fte_ratio:lunch_subsidy_eligibility + lunch_subsidy_eligibility + I(average_salary/1000), data=df)
+model_4.se <- coeftest(model_4, vcov=vcovHC)[ , "Std. Error"]
+```
+
+```{r}
+waldtest(model_1, model_2, vcov=vcovHC(model_2, type="HC0"))
+```
+
+```{r}
+#waldtest(model_2, model_3, vcov=vcovHC(model_3, type="HC0"))
+```
+
+```{r}
+waldtest(model_3, model_4, vcov=vcovHC(model_4, type="HC0"))
+```
+
+```{r, results='asis', include=TRUE, echo=FALSE}
+stargazer(model_1, model_2, model_3, model_4,
+          out = "model.html",
+          se = list (model_1.se, model_2.se, model_3.se, model_4.se), 
+          title = "The Relationship Between Truancy and Pupil Teacher Ratio",
+          column.labels=c("Model 1", "Model 2", "Model 3", "Model 4"),
+          covariate.labels = c("pupil teacher ratio",
+                               "high subsidy:pupil teacher ratio",
+                               "average subsidy:pupil teacher ratio",
+                               "low subsidy:pupil teacher ratio",
+                               "high subsidy",
+                               "average subsidy",
+                               "average salary (in thousands)",
+                               "constant"),
+          dep.var.labels = "log(truancy rate)",
+          star.cutoffs = c(0.05, 0.01, 0.001),
+          order=c(1, 7, 6, 5, 3, 2, 4, 8),
+          model.numbers = FALSE,
+          df = FALSE,
+          single.row = FALSE,
+          nobs = TRUE,
+          align = TRUE,
+          header = FALSE)
+```
+
+
+
+

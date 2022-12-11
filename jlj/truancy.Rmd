@@ -1,0 +1,248 @@
+---
+title: "truancy"
+author: "Jean-Luc Jackson"
+date: "3/30/2022"
+output: pdf_document
+---
+
+```{r, message=FALSE}
+# Load libraries
+library(tidyverse)
+```
+
+
+```{r}
+# Load data
+data_list <- readRDS("../datasets/awesome_data.rds")
+names(data_list)
+```
+
+# Load Data
+
+```{r}
+attendance <- data_list$attendance
+stu_teach <- data_list$student_teacher_ratios
+teach_demo <- data_list$teacher_demographics
+teach_sals <- data_list$teacher_salaries
+lunches <- data_list$free_and_reduced_lunch
+
+consol_school <- data_list$consolidated.school
+consol_district <- data_list$consolidated.district
+
+```
+
+# Attendance
+
+```{r}
+
+names(attendance)
+
+# Truancy Rate -- Linear
+attendance %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(color = 'blue',
+                 fill = 'white',
+                 bins = 20)
+
+# Truancy Rate -- sqrt
+attendance %>% 
+  ggplot() +
+  aes(x = sqrt(truancy_rate)) +
+  geom_histogram(color = 'blue',
+                 fill = 'white',
+                 bins = 20)
+
+  
+```
+
+# Student-Teacher Ratios
+
+```{r}
+# Student Teacher Ratios
+names(stu_teach)
+
+
+stu_teach %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio) +
+  geom_histogram(bins = 20,
+                 color = 'blue',
+                 fill = 'white')
+
+stu_teach %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio)) +
+  geom_histogram(bins = 20,
+                 color = 'blue',
+                 fill = 'white')
+```
+
+Defining FTE: https://www.edglossary.org/student-teacher-ratio/
+
+Preschools are outliers -- ratios up to *300 to 1**
+
+```{r}
+
+stu_teach %>% 
+  filter(pupil_teacher_fte_ratio < 120) %>% 
+  summarize(n = n())
+
+stu_teach %>% 
+  filter(pupil_teacher_fte_ratio < 120) %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio, y = ..density..) +
+  geom_histogram(bins = 20,
+                 color = 'blue',
+                 fill = 'white') +
+  geom_density()
+
+stu_teach %>% 
+  ggplot() +
+  aes(sample = pupil_teacher_fte_ratio) +
+  stat_qq() + stat_qq_line() +
+  labs(
+    title = "Q-Q Plot",
+    subtitle = "Checking normality"
+  )
+
+```
+very heavy tail.
+maybe we don't include preschools? and just focus on grade schools
+
+# Teacher Salaries
+
+```{r}
+# Teacher Salaries
+names(teach_sals)
+
+# Make numeric columns
+teach_salaries <- teach_sals %>% 
+  transform(charter_average_salary = as.numeric(charter_average_salary),
+            non_charter_salary = as.numeric(non_charter_salary),
+            all_average = as.numeric(all_average)) %>% 
+  mutate(
+    charter_flag = charter_average_salary > 0
+  )
+
+teach_salaries %>% 
+  distinct() %>% 
+  summarize(n = n())
+
+teach_salaries %>% 
+  group_by(charter_flag) %>% 
+  summarize(n = n())
+
+teach_salaries %>% 
+  ggplot() +
+  aes(x = charter_flag,
+      y = all_average,
+      color = charter_flag) +
+  geom_boxplot()
+
+teach_salaries %>% 
+  filter(charter_average_salary > 0) %>% 
+  ggplot() +
+  aes(x = charter_average_salary) +
+  geom_histogram(bins = 40,
+                 color = 'blue',
+                 fill = 'white')
+
+teach_salaries %>% 
+  filter(non_charter_salary > 0) %>% 
+  ggplot() +
+  aes(x = non_charter_salary) +
+  geom_histogram(bins = 40,
+                 color = 'blue',
+                 fill = 'white')
+
+teach_salaries %>% 
+  ggplot() +
+  aes(x = all_average) +
+  geom_histogram(bins = 40,
+                 color = 'blue',
+                 fill = 'white')
+quantile(teach_salaries$all_average)
+
+# Adding categorical variable for salary ranges
+
+
+# t-test of charter vs non-charter salaries
+charter_salaries <- teach_salaries %>% 
+  filter(charter_average_salary > 0) %>% 
+  select(charter_average_salary)
+
+non_charter_salaries <- teach_salaries %>% 
+  filter(non_charter_salary > 0) %>% 
+  select(non_charter_salary)
+
+t.test(charter_salaries$charter_average_salary,
+       non_charter_salaries$non_charter_salary)
+mean(charter_salaries$charter_average_salary)
+mean(non_charter_salaries$non_charter_salary)
+  
+```
+
+## Adding to consolidated DF
+```{r}
+# Joining into consolidated df
+consolidated_salaries <- teach_salaries %>% 
+  select(organization_code,
+         charter_average_salary,
+         non_charter_salary,
+         all_average,
+         charter_flag) %>% 
+  left_join(consol, .,
+            by = c("district_code" = "organization_code"))
+
+consolidated_salaries %>%
+  select(everything()) %>%  # replace to your needs
+  summarise_all(funs(sum(is.na(.))))
+```
+
+## Try a model
+```{r}
+# Let's try modeling for fun
+model_truancy_salary <- lm(truancy_rate ~ all_average,
+                           data = consolidated_salaries)
+
+summary(model_truancy_salary)
+
+consolidated_salaries %>% 
+  ggplot() +
+  aes(x = all_average,
+      y = truancy_rate,
+      color = charter_flag) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+
+# Free plus Reduced Lunches
+
+```{r}
+# Free & Reduced Lunch
+names(lunches)
+
+lunches %>% 
+  ggplot() +
+  aes(x = percent_free_and_reduced,
+      y = ..density..) +
+  geom_histogram(bins = 50,
+                 color = 'blue',
+                 fill = 'white') +
+  geom_vline(aes(xintercept = mean(lunches$percent_free_and_reduced)), size = 1.0, linetype = "dashed") +
+  geom_vline(aes(xintercept = (mean(lunches$percent_free_and_reduced) + sd(lunches$percent_free_and_reduced))), size = 0.75, linetype = "dashed") +
+  geom_vline(aes(xintercept = (mean(lunches$percent_free_and_reduced) - sd(lunches$percent_free_and_reduced))), size = 0.75, linetype = "dashed") +
+  geom_density()
+
+lunches %>% 
+  ggplot() +
+  aes(x = "", y = percent_free_and_reduced) +
+  geom_boxplot() +
+  geom_jitter(color = 'black', size = 0.4, alpha = 0.8)
+
+quantile(lunches$percent_free_and_reduced)
+```
+
+

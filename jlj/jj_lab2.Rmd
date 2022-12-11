@@ -1,0 +1,523 @@
+---
+title: "jj_lab2"
+author: "Jean-Luc Jackson"
+date: \today
+header-includes:
+   - \usepackage{dcolumn}
+output: 
+  pdf_document: 
+    number_sections: false
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning= FALSE)
+knitr::knit_hooks$set(inline=function(x) {prettyNum(x, big.mark=",")})
+
+if (!require("here")) install.packages("here")
+
+library(here)
+library(patchwork)
+library(sandwich)
+library(lmtest)
+library(tidyverse)
+library(stargazer)
+```
+
+```{r load data}
+awesome_data <- read_rds(here ("datasets/awesome_data.rds"))
+```
+
+# Current Models
+*Model Set 1 --- log models*
+
+Model 1: log(truancy_rate) ~ log(pupil_teacher_fte_ratio)  \
+Model 2: log(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility  \
+Model 3: log(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + average_salary  \
+
+*Model Set 2 --- sqrt models*
+
+Model 4: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) \
+Model 5: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility \
+Model 6: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + average_salary
+
+*Model Set 3 --- sqrt interaction models*
+
+Model 7: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) \
+Model 8: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility \
+Model 9: sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + average_salary
+
+## Model Proposal
+*Proposed Model Set 4 --- grade-level log interaction models*
+
+Model 10: log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility \
+Model 11: log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + grade_level \
+Model 12: log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + grade_level + average_salary \
+
+
+# Checking log(100*variable)
+
+```{r}
+df <- awesome_data$consolidated.school
+
+df <- df %>% 
+  mutate(
+    truancy_rate = 100 * truancy_rate
+  )
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(bins = 20)
+
+df %>% 
+  ggplot() +
+  aes(x = log(truancy_rate)) +
+  geom_histogram(bins = 20)
+
+model <- lm(log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + I(average_salary/1000),
+            data = df)
+
+summary(model)
+
+```
+
+
+
+# Adding Grade-Level Factor
+
+```{r}
+df_grade_levels <- awesome_data$schools
+
+df_grade_levels <- df_grade_levels %>% 
+  mutate(
+    grade_level = case_when(
+      x1st + x2nd + x3rd + x4th + x5th        == pk_12_count ~ "ELEM",
+      x1st + x2nd + x3rd + x4th + x5th + x6th == pk_12_count ~ "ELEM",
+      x7th + x8th                             == pk_12_count ~ "MIDD",
+      x6th + x7th + x8th                      == pk_12_count ~ "MIDD",
+      x9th + x10th + x11th + x12th            == pk_12_count ~ "HIGH",
+      TRUE                                            ~ "MIX"
+    )
+  )
+
+consolidated.school.grade_levels <- left_join(awesome_data$consolidated.school,
+                df_grade_levels,
+                by = c("county_code",
+                       "county_name",
+                       "district_code",
+                       "district_name",
+                       "school_code",
+                       "school_name",
+                       "high_school",
+                       "high_school_plus"))
+
+consolidated.school.grade_levels %>% 
+  ggplot() +
+  aes(x = grade_level) +
+  geom_bar()
+
+```
+
+## Grade-Level Modeling
+
+```{r}
+
+df <- consolidated.school.grade_levels
+
+# Re-ordering factors for optimal interpretability
+df$grade_level <- factor(df$grade_level, levels=c('ELEM', 'MIDD', 'HIGH', 'MIX'))
+df$lunch_subsidy_eligibility <- factor(df$lunch_subsidy_eligibility, levels = c('AVG', 'LOW', 'HIGH'))
+
+model_10 <- lm(log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility,
+               data = df)
+
+model_11 <- lm(log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + grade_level,
+               data = df)
+
+model_12 <- lm(log(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + grade_level + average_salary,
+               data = df)
+
+
+# Add predicted column
+df <- df %>% 
+  mutate(
+    model_pred_10 = predict(model_10),
+    model_resid_10 = resid(model_10),
+    model_pred_11 = predict(model_11),
+    model_resid_11 = resid(model_11),
+    model_pred_12 = predict(model_12),
+    model_resid_12 = resid(model_12)
+  )
+
+# Plotting
+# Model 10
+df %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = log(truancy_rate),
+      color = lunch_subsidy_eligibility) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 10",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (log scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_10))
+
+# Model 11
+df %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = log(truancy_rate),
+      color = lunch_subsidy_eligibility,
+      linetype = grade_level) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 11",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (log scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_11))
+
+# Model 12
+# can't be visualized because average_salary is a metric variable
+df %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = log(truancy_rate),
+      color = lunch_subsidy_eligibility,
+      linetype = grade_level) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 11",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (log scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_11))
+
+```
+
+### Testing Coefficients
+
+```{r}
+mean(resid(model_10)^2)
+mean(resid(model_11)^2)
+mean(resid(model_12)^2)
+
+
+coeftest(model_10, vcov = vcovHC)
+
+coeftest(model_11, vcov = vcovHC)
+
+coeftest(model_12, vcov = vcovHC)
+
+
+waldtest(model_10, model_11, vcov=vcovHC(model_11, type="HC0"))
+
+waldtest(model_11, model_12, vcov=vcovHC(model_12, type="HC0"))
+
+```
+```{r, results='asis', include=TRUE}
+
+stargazer(model_10, model_11, model_12,
+          title = "The Relationship Between Truancy and Pupil Student Ratio (Individual School)",
+          column.labels=c("Model 10", "Model 11", "Model 12"),
+          star.cutoffs = c(0.05, 0.01, 0.001),
+          model.numbers = FALSE,
+          omit.stat = c("f"),
+          df = TRUE,
+          single.row = FALSE,
+          nobs = TRUE,
+          align = TRUE,
+          header = FALSE)
+
+```
+
+
+# Variable EDA
+## Truancy Rate
+### School-Level
+```{r}
+df <- awesome_data$consolidated.school
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(bins = 50,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(bins = 50,
+                 fill = "white",
+                 color = "blue") +
+  scale_x_continuous(trans = "log")
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 50)
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 50) +
+  scale_x_continuous(trans = "log")
+
+```
+
+
+### District-Level
+```{r}
+df <- awesome_data$consolidated.district
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = truancy_rate) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue") +
+  scale_x_continuous(trans = "log")
+
+df %>% 
+  ggplot() +
+  aes(x = sqrt(truancy_rate)) +
+  geom_histogram(bins = 25)
+
+```
+
+## Pupil-Teacher Ratio
+### School-Level
+
+```{r}
+
+df <- awesome_data$consolidated.school
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue") +
+  scale_x_continuous(trans = "log")
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 25) +
+  scale_x_continuous(trans = "log")
+```
+
+### District-Level
+
+```{r}
+
+df <- awesome_data$consolidated.district
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue") +
+  scale_x_continuous(trans = "log")
+
+df %>% 
+  ggplot() +
+  aes(x = pupil_teacher_fte_ratio,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 25) +
+  scale_x_continuous(trans = "log")
+```
+
+## Average Teacher Salary
+### School-Level
+
+```{r}
+
+df <- awesome_data$consolidated.school
+
+df %>% 
+  ggplot() +
+  aes(x = average_salary/1000) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = average_salary/1000,
+      fill = charter) +
+  geom_histogram(bins = 25)
+
+df %>% 
+  ggplot() +
+  aes(x = average_salary/1000,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 25)
+
+```
+
+
+### District-Level
+
+```{r}
+
+df <- awesome_data$consolidated.district
+
+df %>% 
+  ggplot() +
+  aes(x = average_salary/1000) +
+  geom_histogram(bins = 25,
+                 fill = "white",
+                 color = "blue")
+
+df %>% 
+  ggplot() +
+  aes(x = average_salary/1000,
+      fill = lunch_subsidy_eligibility) +
+  geom_histogram(bins = 25)
+
+```
+
+## Grade Level
+### School-Level
+```{r}
+
+df <- consolidated.school.grade_levels
+
+hists <- df %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      fill = grade_level) +
+  geom_histogram(bins = 40,
+                 color = 'black') +
+  geom_density()
+
+dens <- df %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = ..density..,
+      fill = grade_level) +
+  geom_density(alpha = 0.5)
+
+(hists / dens)
+```
+
+# Inspecting Models
+
+```{r}
+model_1 <- lm (log(truancy_rate) ~ log(pupil_teacher_fte_ratio), data=df)
+
+model_2 <- lm (log(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility, data=df)
+
+model_3 <- lm (log(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + average_salary, data=df)
+
+model_4 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio), data = df)
+
+model_5 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility, data = df)
+
+model_6 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility + average_salary, data = df)
+
+model_7 <- lm(sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio), data = df)
+
+model_8 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility, data = df)
+
+model_9 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility + average_salary, data = df)
+
+```
+
+
+## School-Level
+
+```{r}
+# School-level data
+df <- awesome_data$consolidated.school
+
+# 3 Final Models
+model_2 <- lm (log(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility,
+               data = df)
+
+model_5 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio) + lunch_subsidy_eligibility,
+               data = df)
+
+model_8 <- lm (sqrt(truancy_rate) ~ log(pupil_teacher_fte_ratio):lunch_subsidy_eligibility,
+               data = df)
+
+
+
+# Add predicted column
+df_plot <- df %>% 
+  mutate(
+    model_pred_2 = predict(model_2),
+    model_pred_5 = predict(model_5),
+    model_pred_8 = predict(model_8)
+  )
+
+# Plotting
+df_plot %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = log(truancy_rate),
+      color = lunch_subsidy_eligibility) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 2",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (log scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_2))
+
+df_plot %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = sqrt(truancy_rate),
+      color = lunch_subsidy_eligibility) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 5",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (sqrt scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_5))
+
+df_plot %>% 
+  ggplot() +
+  aes(x = log(pupil_teacher_fte_ratio),
+      y = sqrt(truancy_rate),
+      color = lunch_subsidy_eligibility) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Model 8",
+      x = "Pupil-Teacher Ratio (log scale)",
+      y = "Truancy Rate (sqrt scale)") +
+  geom_line(size = 1,
+            aes(y = model_pred_8))
+
+```
+
+
+
+
